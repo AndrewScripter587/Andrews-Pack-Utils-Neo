@@ -5,6 +5,7 @@ import net.minecraft.commands.arguments.*;
 import net.minecraft.commands.arguments.coordinates.*;
 import net.minecraft.commands.CommandBuildContext;
 import com.mojang.brigadier.CommandDispatcher; // Corrected import
+import net.minecraft.network.protocol.game.ClientboundSetEntityMotionPacket;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.Entity;
@@ -124,6 +125,9 @@ public class SetupCommands {
                                                 for (Entity entityIndex : entities) {
                                                     entityIndex.setDeltaMovement(velocity);
                                                     entityIndex.hasImpulse = true;
+                                                    if (entityIndex instanceof ServerPlayer) { // Only send packet to players
+                                                        ((ServerPlayer) entityIndex).connection.send(new net.minecraft.network.protocol.game.ClientboundSetEntityMotionPacket(entityIndex));
+                                                    }
                                                     System.out.println("The new velocity is " + entityIndex.getDeltaMovement().toString());
                                                 }
                                             } catch (Throwable e) {
@@ -138,8 +142,11 @@ public class SetupCommands {
                                                         Vec3 velocity = Vec3Argument.getVec3(context, "Vector");
                                                         Collection<? extends Entity> entities = EntityArgument.getEntities(context, "entities");
                                                         for (Entity entityIndex : entities) {
-                                                            entityIndex.addDeltaMovement(velocity);
                                                             entityIndex.hasImpulse = true;
+                                                            entityIndex.addDeltaMovement(velocity);
+                                                            if (entityIndex instanceof ServerPlayer) { // Only send packet to players
+                                                                ((ServerPlayer) entityIndex).connection.send(new net.minecraft.network.protocol.game.ClientboundSetEntityMotionPacket(entityIndex));
+                                                            }
                                                             System.out.println("The new velocity is " + entityIndex.getDeltaMovement().toString());
                                                         }
                                                     } catch (Throwable e) {
@@ -155,8 +162,12 @@ public class SetupCommands {
                                                         Vec3 velocity = Vec3Argument.getVec3(context, "Vector");
                                                         Collection<? extends Entity> entities = EntityArgument.getEntities(context, "entities");
                                                         for (Entity entityIndex : entities) {
+                                                            // For setting velocity:
                                                             entityIndex.setDeltaMovement(velocity);
                                                             entityIndex.hasImpulse = true;
+                                                            if (entityIndex instanceof ServerPlayer) { // Only send packet to players
+                                                                ((ServerPlayer) entityIndex).connection.send(new net.minecraft.network.protocol.game.ClientboundSetEntityMotionPacket(entityIndex));
+                                                            }
                                                             System.out.println("The new velocity is " + entityIndex.getDeltaMovement().toString());
                                                         }
                                                     } catch (Throwable e) {

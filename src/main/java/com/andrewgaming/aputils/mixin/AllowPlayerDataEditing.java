@@ -1,18 +1,26 @@
 package com.andrewgaming.aputils.mixin;
 
-import net.minecraft.server.commands.data.EntityDataAccessor; // Corrected import and class name location
-import net.minecraft.world.entity.player.Player; // Note the package change
+import com.mojang.brigadier.exceptions.CommandSyntaxException;
+import java.util.UUID;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.server.commands.data.DataAccessor;
+import net.minecraft.server.commands.data.EntityDataAccessor;
+import net.minecraft.world.entity.Entity;
+import org.spongepowered.asm.mixin.Debug;
 import org.spongepowered.asm.mixin.Mixin;
-import org.spongepowered.asm.mixin.injection.Constant;
-import org.spongepowered.asm.mixin.injection.ModifyConstant;
+import org.spongepowered.asm.mixin.Shadow;
 
-@Mixin(EntityDataAccessor.class)
-public class AllowPlayerDataEditing {
+@Debug(
+        export = true
+)
+@Mixin({EntityDataAccessor.class})
+public abstract class AllowPlayerDataEditing implements DataAccessor {
+    @Shadow
+    private Entity entity;
 
-
-    @ModifyConstant(method = "setData", constant = @Constant(ordinal = 0, classValue = Player.class)) // ClassValue needs to be updated
-    private static boolean playerCheckBypass(Object obj, Class<?> objclass){ // It's good practice to use wildcard or specific type
-        return false;
+    public void setData(CompoundTag other) throws CommandSyntaxException {
+        UUID uuid = this.entity.getUUID();
+        this.entity.load(other);
+        this.entity.setUUID(uuid);
     }
-
 }

@@ -20,6 +20,7 @@ import net.minecraft.world.phys.Vec3;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
+import net.neoforged.neoforge.event.entity.living.LivingEntityUseItemEvent;
 import net.neoforged.neoforge.event.tick.*;
 
 import java.util.Collection;
@@ -33,7 +34,6 @@ public class SetupCommands {
 
     public static void registerCommands() {
         NeoForge.EVENT_BUS.register(SetupCommands.class);
-        NeoForge.EVENT_BUS.addListener(SetupCommands::onServerTick);
     }
 
     @SubscribeEvent
@@ -213,7 +213,8 @@ public class SetupCommands {
         );
     }
 
-    public static void onServerTick(ServerTickEvent event) {
+    @SubscribeEvent
+    public static void onServerTick(ServerTickEvent.Post event) {
             for (ServerLevel world : event.getServer().getAllLevels()) {
                 for (Entity entity : world.getEntities().getAll()) {
                     if (entity instanceof IEntityDamageAccessor damageAccessor) {

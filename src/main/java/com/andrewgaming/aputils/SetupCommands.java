@@ -123,6 +123,13 @@ public class SetupCommands {
                             return 1;
                         })
                 )
+                .then(literal("loader")
+                        .executes(context -> {
+                            context.getSource().sendSuccess(() -> Component.literal("This subcommand exists for datapacks to detect which loader version of the mod is installed. This subcommand does nothing else other than return 1 on neoforge, and 0 on fabric."), false);
+                            return 1;
+                        })
+                )
+
                 .then(literal("velocity")
                         .requires(source -> source.hasPermission(2))
                         .then(argument("entities", EntityArgument.entities())
@@ -200,6 +207,39 @@ public class SetupCommands {
                         )
                 )
                 .then(literal("despawn")
+                        .requires(source -> source.hasPermission(2))
+                        .then(argument("entities", EntityArgument.entities())
+                                .executes(context -> {
+                                    Collection<? extends Entity> entities = EntityArgument.getEntities(context, "entities");
+                                    for (Entity entity : entities) {
+                                        if (entity instanceof ServerPlayer) {
+                                            context.getSource().sendFailure(Component.literal("§cPlayers aren't allowed, but the provided target selector references one or more player(s)."));
+                                            AndrewsDatapackUtilities.LOGGER.info("Command failed because a player was included in the target selector. To bypass this (Don't unless you want crashes and/or major issues to happen!), add 'force' to the end of the command you used. Requires permission level 4 to use 'force'.");
+                                            return -1;
+                                        }
+                                    }
+                                    for (Entity entity : entities) {
+                                        AndrewsDatapackUtilities.LOGGER.info("Despawning %s (UUID %s)".formatted(entity.getType().toString(), entity.getUUID()));
+                                        entity.discard();
+                                    }
+                                    context.getSource().sendSuccess(() -> Component.literal(("Successfully despawned %s " + (entities.size() == 1 ? "entity" : "entities") + ".").formatted(entities.size())), true);
+                                    return 1;
+                                })
+                                .then(literal("force")
+                                        .requires(serverCommandSource -> serverCommandSource.hasPermission(4))
+                                        .executes(context -> {
+                                            Collection<? extends Entity> entities = EntityArgument.getEntities(context, "entities");
+                                            context.getSource().sendSuccess(() -> Component.literal("Forcefully attempting to despawn. This WILL cause issues if a player is in the provided target selector."), true);
+                                            for (Entity entity : entities) {
+                                                AndrewsDatapackUtilities.LOGGER.info("Despawning %s (UUID %s)".formatted(entity.getType().toString(), entity.getUUID()));
+                                                entity.discard();
+                                            }
+                                            context.getSource().sendSuccess(() -> Component.literal(("Successfully despawned %s " + (entities.size() == 1 ? "entity" : "entities") + ".").formatted(entities.size())), true);
+                                            return 1;
+                                        })
+                                )
+                        )
+                )
                 .then(literal("check_damage")
                         .requires(source -> source.hasPermission(2))
                         .then(argument("target", EntityArgument.entity())
@@ -209,7 +249,6 @@ public class SetupCommands {
                                 )
                         )
                 )
-            )
         );
     }
 
@@ -218,44 +257,56 @@ public class SetupCommands {
             for (ServerLevel world : event.getServer().getAllLevels()) {
                 for (Entity entity : world.getEntities().getAll()) {
                     if (entity instanceof IEntityDamageAccessor damageAccessor) {
-                        damageAccessor.resetDamageFlags();
+//                        damageAccessor.resetDamageFlags();
                     }
                 }
             }
     }
 
     private static int checkDamage(CommandSourceStack source, Entity target, String damagePredicate) throws CommandSyntaxException {
-        if (!(target instanceof IEntityDamageAccessor damageAccessor)) {
-            source.sendFailure(Component.literal("Target entity does not support damage checking."));
-            return 0;
-        }
-
-        if (damageAccessor.hasTakenDamageThisTick()) {
-            if (damagePredicate == null) {
-                source.sendSuccess(() -> Component.literal("The provided entity took damage!"), false);
-                return 1;
-            } else {
-                DamageSource lastSource = damageAccessor.getLastDamageSourceThisTick();
-                if (lastSource != null) {
-                    DamageType damageTypeId = lastSource.type();
-                    String damageTypeIdStringified = damageTypeId.toString();
-
-                    if (damagePredicate.equals(damageTypeIdStringified)) {
-                        source.sendSuccess(() -> Component.literal("The provided entity took damage of type: " + damageTypeIdStringified), true);
-                        return 1;
-                    } else {
-                        source.sendFailure(Component.literal("The entity took damage, but it did not match the specified damage type."));
-                        source.sendSuccess(() -> Component.literal("The type of damage that WAS taken is: " + damageTypeIdStringified), true);
-                        return 0;
-                    }
-                } else {
-                    source.sendFailure(Component.literal("The entity took damage, but the damage source could not be determined."));
-                    return 0;
-                }
-            }
-        } else {
-            source.sendFailure(Component.literal("The entity didn't take damage!"));
-            return 0;
-        }
+        source.sendFailure(Component.literal("Currently doesn't work in NeoForge. Please use Fabric to use the '/aputils check_damage' command."));
+//        try {
+//            if (!(target instanceof IEntityDamageAccessor damageAccessor)) {
+//                source.sendFailure(Component.literal("Target entity does not support damage checking."));
+//                return 0;
+//            }
+//
+//            if (damageAccessor.hasTakenDamageThisTick()) {
+//                if (damagePredicate == null) {
+//                    source.sendSuccess(() -> Component.literal("The provided entity took damage!"), false);
+//                    return 1;
+//                } else {
+//                    DamageSource lastSource = damageAccessor.getLastDamageSourceThisTick();
+//
+//                    if (lastSource != null) {
+//                        DamageType damageTypeId = lastSource.type();
+//                        String damageTypeIdStringified = damageTypeId.toString();
+//                        source.sendSystemMessage(Component.literal("Type: " + damageTypeIdStringified));
+//                        if (damagePredicate.equals(damageTypeIdStringified)) {
+//                            AndrewsDatapackUtilities.LOGGER.info("Success, Type: " + damageTypeIdStringified);
+//                            source.sendSuccess(() -> Component.literal("The provided entity took damage of type: " + damageTypeIdStringified), true);
+//                            source.sendSystemMessage(Component.literal("Success"));
+//                            return 1;
+//                        } else {
+//                            source.sendFailure(Component.literal("The entity took damage, but it did not match the specified damage type."));
+//                            AndrewsDatapackUtilities.LOGGER.info("Failed, Type: " + damageTypeIdStringified);
+//                            source.sendSuccess(() -> Component.literal("The type of damage that WAS taken is: " + damageTypeIdStringified), true);
+//                            source.sendSystemMessage(Component.literal("Yes"));
+//                            return 0;
+//                        }
+//                    } else {
+//                        source.sendFailure(Component.literal("The entity took damage, but the damage source could not be determined."));
+//                        source.sendSystemMessage(Component.literal("Failed"));
+//                        return 0;
+//                    }
+//                }
+//            } else {
+//                source.sendFailure(Component.literal("The entity didn't take damage!"));
+//                return 0;
+//            }
+//        } catch (Exception e) {
+//            source.sendSystemMessage(Component.literal("Exception: " + e));
+//        }
+        return 0;
     }
 }

@@ -1,35 +1,39 @@
 package com.andrewgaming.aputils;
 
-import com.mojang.brigadier.arguments.DoubleArgumentType;
-import net.minecraft.commands.arguments.*;
-import net.minecraft.commands.arguments.coordinates.*;
-import net.minecraft.commands.CommandBuildContext;
-import com.mojang.brigadier.CommandDispatcher; // Corrected import
-import net.minecraft.network.protocol.game.ClientboundSetEntityMotionPacket;
-import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.network.chat.Component;
+import com.mojang.brigadier.CommandDispatcher;
+import com.mojang.brigadier.arguments.StringArgumentType;
+import com.mojang.brigadier.exceptions.CommandSyntaxException;
+import net.minecraft.commands.CommandSourceStack;
+import net.minecraft.commands.arguments.EntityArgument;
+import net.minecraft.world.damagesource.DamageType;
 import net.minecraft.world.entity.Entity;
-import net.minecraft.world.phys.Vec3;
-import net.neoforged.bus.api.IEventBus;
-import net.neoforged.neoforge.common.NeoForge; // Import NeoForge
+import net.minecraft.world.damagesource.DamageSource;
+import net.minecraft.world.damagesource.DamageTypes;
+import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.core.Registry;
+import net.minecraft.server.level.ServerLevel;
+import net.neoforged.bus.api.SubscribeEvent;
+import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
-import net.neoforged.bus.api.SubscribeEvent; // Import SubscribeEvent annotation
+import net.neoforged.neoforge.event.tick.*;
 
-import java.util.Collection;
+import java.util.Objects;
+import java.util.Optional;
 
 import static net.minecraft.commands.Commands.argument;
 import static net.minecraft.commands.Commands.literal;
+
 public class SetupCommands {
 
-    // No need to pass the IEventBus here anymore
     public static void registerCommands() {
-        NeoForge.EVENT_BUS.register(SetupCommands.class); // Register the class itself to the NeoForge event bus
+        NeoForge.EVENT_BUS.register(SetupCommands.class);
+        NeoForge.EVENT_BUS.addListener(SetupCommands::onServerTick);
     }
 
-    @SubscribeEvent // Mark this method to be called when RegisterCommandsEvent is fired
+    @SubscribeEvent
     public static void onRegisterCommands(RegisterCommandsEvent event) {
-        CommandDispatcher<net.minecraft.commands.CommandSourceStack> dispatcher = event.getDispatcher();
-        CommandBuildContext buildContext = event.getBuildContext();
+        CommandDispatcher<CommandSourceStack> dispatcher = event.getDispatcher();
 
         dispatcher.register(literal("aputils")
                 .then(literal("calc")
@@ -191,39 +195,60 @@ public class SetupCommands {
                         )
                 )
                 .then(literal("despawn")
+                .then(literal("check_damage")
                         .requires(source -> source.hasPermission(2))
-                        .then(argument("entities", EntityArgument.entities())
-                                .executes(context -> {
-                                    Collection<? extends Entity> entities = EntityArgument.getEntities(context, "entities");
-                                    for (Entity entity : entities) {
-                                        if (entity instanceof ServerPlayer) {
-                                            context.getSource().sendFailure(Component.literal("§cPlayers aren't allowed, but the provided target selector references one or more player(s)."));
-                                            AndrewsDatapackUtilities.LOGGER.info("Command failed because a player was included in the target selector. To bypass this (Don't unless you want crashes and/or major issues to happen!), add 'force' to the end of the command you used. Requires permission level 4 to use 'force'.");
-                                            return -1;
-                                        }
-                                    }
-                                    for (Entity entity : entities) {
-                                        AndrewsDatapackUtilities.LOGGER.info("Despawning %s (UUID %s)".formatted(entity.getType().toString(), entity.getUUID()));
-                                        entity.discard();
-                                    }
-                                    context.getSource().sendSuccess(() -> Component.literal(("Successfully despawned %s " + (entities.size() == 1 ? "entity" : "entities") + ".").formatted(entities.size())), true);
-                                    return 1;
-                                })
-                                .then(literal("force")
-                                        .requires(serverCommandSource -> serverCommandSource.hasPermission(4))
-                                        .executes(context -> {
-                                            Collection<? extends Entity> entities = EntityArgument.getEntities(context, "entities");
-                                            context.getSource().sendSuccess(() -> Component.literal("Forcefully attempting to despawn. This WILL cause issues if a player is in the provided target selector."), true);
-                                            for (Entity entity : entities) {
-                                                AndrewsDatapackUtilities.LOGGER.info("Despawning %s (UUID %s)".formatted(entity.getType().toString(), entity.getUUID()));
-                                                entity.discard();
-                                            }
-                                            context.getSource().sendSuccess(() -> Component.literal(("Successfully despawned %s " + (entities.size() == 1 ? "entity" : "entities") + ".").formatted(entities.size())), true);
-                                            return 1;
-                                        })
+                        .then(argument("target", EntityArgument.entity())
+                                .executes(context -> checkDamage(context.getSource(), EntityArgument.getEntity(context, "target"), null))
+                                .then(argument("damage_predicate", StringArgumentType.string())
+                                        .executes(context -> checkDamage(context.getSource(), EntityArgument.getEntity(context, "target"), StringArgumentType.getString(context, "damage_predicate")))
                                 )
                         )
                 )
         );
+    }
+
+    public static void onServerTick(ServerTickEvent event) {
+            for (ServerLevel world : event.getServer().getAllLevels()) {
+                for (Entity entity : world.getEntities().getAll()) {
+                    if (entity instanceof IEntityDamageAccessor damageAccessor) {
+                        damageAccessor.resetDamageFlags();
+                    }
+                }
+            }
+    }
+
+    private static int checkDamage(CommandSourceStack source, Entity target, String damagePredicate) throws CommandSyntaxException {
+        if (!(target instanceof IEntityDamageAccessor damageAccessor)) {
+            source.sendFailure(Component.literal("Target entity does not support damage checking."));
+            return 0;
+        }
+
+        if (damageAccessor.hasTakenDamageThisTick()) {
+            if (damagePredicate == null) {
+                source.sendSuccess(() -> Component.literal("The provided entity took damage!"), false);
+                return 1;
+            } else {
+                DamageSource lastSource = damageAccessor.getLastDamageSourceThisTick();
+                if (lastSource != null) {
+                    DamageType damageTypeId = lastSource.type();
+                    String damageTypeIdStringified = damageTypeId.toString();
+
+                    if (damagePredicate.equals(damageTypeIdStringified)) {
+                        source.sendSuccess(() -> Component.literal("The provided entity took damage of type: " + damageTypeIdStringified), true);
+                        return 1;
+                    } else {
+                        source.sendFailure(Component.literal("The entity took damage, but it did not match the specified damage type."));
+                        source.sendSuccess(() -> Component.literal("The type of damage that WAS taken is: " + damageTypeIdStringified), true);
+                        return 0;
+                    }
+                } else {
+                    source.sendFailure(Component.literal("The entity took damage, but the damage source could not be determined."));
+                    return 0;
+                }
+            }
+        } else {
+            source.sendFailure(Component.literal("The entity didn't take damage!"));
+            return 0;
+        }
     }
 }
